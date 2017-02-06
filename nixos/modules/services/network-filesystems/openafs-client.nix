@@ -6,8 +6,8 @@ let
   cfg = config.services.openafsClient;
 
   cellServDB = pkgs.fetchurl {
-    url = http://dl.central.org/dl/cellservdb/CellServDB.2009-06-29;
-    sha256 = "be566f850e88130333ab8bc3462872ad90c9482e025c60a92f728b5bac1b4fa9";
+    url = http://dl.central.org/dl/cellservdb/CellServDB.2016-01-01;
+    sha256 = "03pp3fyf45ybjsmmmrp5ibdcjmrcc2l0zax0nvlij1n9fg6a2dzg";
   };
 
   afsConfig = pkgs.runCommand "afsconfig" {} ''
@@ -17,7 +17,7 @@ let
     echo "/afs:${cfg.cacheDirectory}:${cfg.cacheSize}" > $out/cacheinfo
   '';
 
-  openafsPkgs = config.boot.kernelPackages.openafsClient;
+  openafsPkgs = config.boot.kernelPackages.openafs;
 in
 {
   ###### interface
@@ -66,18 +66,14 @@ in
 
     environment.systemPackages = [ openafsPkgs ];
 
-    environment.etc = [
-      { source = afsConfig;
-        target = "openafs";
-      }
-    ];
-
     systemd.services.afsd = {
       description = "AFS client";
       wantedBy = [ "multi-user.target" ];
       after = [ "network.target" ];
 
       preStart = ''
+        mkdir -p /etc/openafs
+        cp -r ${afsConfig}/* /etc/openafs #*/
         mkdir -p -m 0755 /afs
         mkdir -m 0700 -p ${cfg.cacheDirectory}
         ${pkgs.kmod}/bin/insmod ${openafsPkgs}/lib/openafs/libafs-*.ko || true

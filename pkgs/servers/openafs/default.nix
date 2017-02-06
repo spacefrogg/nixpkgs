@@ -1,13 +1,13 @@
-{ stdenv, fetchurl, fetchgit, which, autoconf, automake, flex, yacc,
-  kernel, glibc, ncurses, perl, kerberos }:
+{ stdenv, fetchurl, fetchgit, which, autoconf, automake, flex, yacc
+, kernel, glibc, ncurses, perl, kerberos }:
 
 stdenv.mkDerivation rec {
   name = "openafs-${version}-${kernel.version}";
-  version = "1.6.20";
+  version = "1.6.20.1";
 
   src = fetchurl {
     url = "http://www.openafs.org/dl/openafs/${version}/openafs-${version}-src.tar.bz2";
-    sha256 = "0qar94k9x9dkws4clrnlw789q1ha9qjk06356s86hh78qwywc1ki";
+    sha256 = "09l8iajh4sl3cigs64jhxj89pvqqf7wfl890vp9lj6f8yvn9x1nw";
   };
 
   nativeBuildInputs = [ autoconf automake flex yacc perl which ];
@@ -35,9 +35,16 @@ stdenv.mkDerivation rec {
     configureFlagsArray=(
       "--with-linux-kernel-build=$TMP/linux"
       ${stdenv.lib.optionalString (kerberos != null) "--with-krb5"}
-      "--sysconfdir=/etc/static"
+      "--sysconfdir=/etc"
+      "--localstatedir=/var"
       "--disable-linux-d_splice-alias-extra-iput"
     )
+  '';
+
+  preFixup = ''
+    rm $out/bin/kpasswd
+    rm $out/sbin/{kas,kdb,ka-forwarder,kadb_check}
+    rm $out/libexec/openafs/kaserver
   '';
 
   meta = with stdenv.lib; {
@@ -47,8 +54,8 @@ stdenv.mkDerivation rec {
     platforms = platforms.linux;
     maintainers = [ maintainers.z77z ];
     broken =
-      (builtins.compareVersions kernel.version  "3.18" == -1) ||
-      (builtins.compareVersions kernel.version "4.4" != -1) ||
+      (!stdenv.lib.strings.versionOlder "3.18" kernel.version) ||
+      (!stdenv.lib.strings.versionOlder kernel.version "4.10") ||
       (kernel.features.grsecurity or false);
   };
 }
