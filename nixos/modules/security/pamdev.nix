@@ -1,0 +1,76 @@
+{ config, lib, pkgs, ... }:
+
+let
+  parentConfig = config;
+  controlActionSet = types.mkOptionType {
+    name = controlActionsSet;
+    description = "Attribute set of PAM control actions";
+    # A control action set is an attribute set where all the keys are
+    # from the first list and all values are from the second list or
+    # integers greater than zero.
+    check = set: (isAttrs set) && (filterAttrs
+     (n: v: (any (name: n == name)
+        [ "success" "open_err" "symbol_err" "service_err" "system_err"
+          "buf_err" "perm_denied" "auth_err" "cred_insufficient"
+          "authinfo_unavail" "user_unknown" "maxtries"
+          "new_authtok_reqd" "acct_expired" "session_err"
+          "cred_unavail" "cred_expired" "cred_err" "no_module_data"
+          "conv_err" "authtok_err" "authtok_recover_err"
+          "authtok_lock_busy" "authtok_disable_aging" "try_again"
+          "ignore" "abort" "authtok_expired" "module_unknown"
+          "bad_item" "conv_again" "incomplete" "default" ])
+      && ((any (value: v == value) [ "ignore" "bad" "die" "ok" "done" "reset"])
+          || (v > 1)))
+      set
+      == {});
+  };
+  mgmtGroup = {config, name, ... }:  let cfg = config; in let config = parentConfig; in {
+    options = {
+      control = mkOption {
+        example = "{ success = ok; new_auth_tok_reqd = ok; ignore = ignore; default = die; }";
+	type = controlActionSet;
+	description = "Control value that defines success and failure of this PAM provider";
+	default = { default = ignore; };
+      };
+      module = mkOption {
+        example = "${pkgs.systemd}/lib/security/pam_systemd.so";
+	type = types.path;
+	description = "Path to the PAM module";
+      };
+      args = mkOption {
+        example = "nullok";
+        type = with types; either str listOf str;
+	description = "List of arguments to the PAM module";
+      };
+    };
+  };
+  provider = {
+    name = mkOption {
+      example = "krb5";
+      type = types.str;
+      description = "Name of the PAM service.";
+    };
+
+    account = mkOption {
+      type = types.submodule mgmtGroup;
+      description = "The account management group";
+    };
+
+    auth = mkOption {
+      type = types.submodule mgmtGroup;
+      description = "The auth management group";
+    };
+
+    password = mkOption {
+      type = types.submodule mgmtGroup;
+      description = "The password management group";
+    };
+
+    session = mkOption {
+      type = types.submodule mgmtGroup;
+      description = "The session management group";
+    };
+  };
+{
+  options 
+}
