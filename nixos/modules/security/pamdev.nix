@@ -28,19 +28,20 @@ let
     options = {
       control = mkOption {
         example = "{ success = ok; new_auth_tok_reqd = ok; ignore = ignore; default = die; }";
-	type = controlActionSet;
-	description = "Control value that defines success and failure of this PAM provider";
-	default = { default = ignore; };
+        type = controlActionSet;
+        description = "Control value that defines success and failure of this PAM provider";
+        default = { default = ignore; };
       };
       module = mkOption {
         example = "${pkgs.systemd}/lib/security/pam_systemd.so";
-	type = types.path;
-	description = "Path to the PAM module";
+        type = types.str;
+        description = "Path to the PAM module";
       };
       args = mkOption {
         example = "nullok";
-        type = with types; either str listOf str;
-	description = "List of arguments to the PAM module";
+        type = with types; either str (listOf str);
+        default = "";
+        description = "List of arguments to the PAM module";
       };
     };
   };
@@ -52,25 +53,64 @@ let
     };
 
     account = mkOption {
-      type = types.submodule mgmtGroup;
+      default = [];
+      type = with types; listOf (submodule mgmtGroup);
       description = "The account management group";
     };
 
     auth = mkOption {
-      type = types.submodule mgmtGroup;
+      default = [];
+      type = with types; listOf (submodule mgmtGroup);
       description = "The auth management group";
     };
 
     password = mkOption {
-      type = types.submodule mgmtGroup;
+      default = [];
+      type = with types; listOf (submodule mgmtGroup);
       description = "The password management group";
     };
 
     session = mkOption {
-      type = types.submodule mgmtGroup;
+      default = [];
+      type = with types; listOf (submodule mgmtGroup);
       description = "The session management group";
     };
   };
+
+  cfg = config.security.pamdev;
+
+  makePAMService = pamService:
+    let
+      lines = map (grp: (map (acc: "account ${acc.control} ${acc.module} ")
+                             grp))
+                  with pamService; [ account auth password session ];
+    in
+    { source = pkgs.writeText "${pamService.name}.pam" lines;
+      target = "pam.d/${pamService.name}";
+    };
+
+in
 {
-  options 
+  options = {
+    security.pamdev.providers = mkOption {
+      default = [];
+      description = "List of PAM service providers";
+      type = with types; loaOf (submodule pamOpts);
+    };
+  };
+
+  config = {
+    #evironment.etc = mapAttrsToList (n: v: makePAMService v) cfg.services;
+
+    security.pamdev.providers = {
+      unix = rec {
+        account = {
+          module = "pam_unix.so"
+          control = { success = done; new_auth_reqd = done; default = ignore; }; # sufficient
+        };
+        auth = account // { args = [ "nullok" "likeauth" "try_first_pass" ]; };
+        session = account;
+      };
+    };
+  };
 }
