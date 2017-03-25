@@ -78,12 +78,23 @@ let
   };
 
   cfg = config.security.pamdev;
+  zipListsLongWith = f: nul: fst: snd:
+    genList
+      (n: f (elemAt fst n) (if (n < (length snd)) (elemAt snd n) nul)) (length fst);
 
   makePAMService = pamService:
     let
-      lines = map (grp: (map (acc: "account ${acc.control} ${acc.module} ")
-                             grp))
-                  with pamService; [ account auth password session ];
+      lines = pamservice: lib.mapAttrs
+                (grp-name: val: map
+		  (acc: "${grp-name} ${acc.c} ${acc.m}${lib.optionalString (acc ? a) " ${acc.a}"}") val)
+		(lib.filterAttrs (n: v: n == "account"
+                                     || n == "auth"
+                                     || n == "session"
+                                     || n == "password") pamservice);
+
+      # lines = map (grp: (map (acc: "account ${acc.control} ${acc.module} ")
+      #                        grp))
+      #             with pamService; [ account auth password session ];
     in
     { source = pkgs.writeText "${pamService.name}.pam" lines;
       target = "pam.d/${pamService.name}";
@@ -104,11 +115,11 @@ in
 
     security.pamdev.providers = {
       unix = rec {
-        account = {
+        account = lib.singleton {
           module = "pam_unix.so"
           control = { success = done; new_auth_reqd = done; default = ignore; }; # sufficient
         };
-        auth = account // { args = [ "nullok" "likeauth" "try_first_pass" ]; };
+        auth = map (v: // { args = [ "nullok" "likeauth" "try_first_pass" ]; }) account;
         session = account;
       };
     };
