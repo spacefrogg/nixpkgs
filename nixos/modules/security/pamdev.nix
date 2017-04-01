@@ -1,10 +1,14 @@
 { config, lib, pkgs, ... }:
 
 let
-  inherit (lib) all any attrValues mkDefault mkOption mkOptionType types
-                genList elemAt filterAttrs length mapAttrs optionalString;
-  inherit (builtins) isAttrs isInt;
+  inherit (lib) all any attrValues concatStringsSep mapAttrsToList mkDefault mkOption mkOptionType types
+                genList elemAt filterAttrs length mapAttrs optionalString stringToCharacters;
+  inherit (builtins) isAttrs isInt replaceStrings;
   parentConfig = config;
+
+  # A control action set is an attribute set where all the keys are
+  # from the first list and all values are from the second list or
+  # integers greater than zero.
   controlActionCheck = set: (isAttrs set) && (filterAttrs
       (n: v: !((any (name: n == name)
                     [ "success" "open_err" "symbol_err" "service_err" "system_err"
@@ -20,14 +24,13 @@ let
                   || ((isInt v) && (v > 0)))))
       set
     == {});
+
   controlActionSet = mkOptionType {
     name = controlActionSet;
     description = "Attribute set of PAM control actions";
-    # A control action set is an attribute set where all the keys are
-    # from the first list and all values are from the second list or
-    # integers greater than zero.
     check = controlActionCheck;
   };
+
   mgmtGroup = {config, name, ... }:  let cfg = config; in let config = parentConfig; in {
     options = {
       control = mkOption {
@@ -42,13 +45,14 @@ let
         description = "Path to the PAM module";
       };
       args = mkOption {
-        example = "nullok";
-        type = with types; either str (listOf str);
-        default = "";
+        example = [ "nullok" ];
+        type = with types; listOf str;
+        default = [];
         description = "List of arguments to the PAM module";
       };
     };
   };
+
   provider = { config, name, ... }: let cfg = config; in let config = parentConfig; in {
     options = {
       name = mkOption {
@@ -88,27 +92,35 @@ let
   };
 
   cfg = config.security.pamdev;
+
   zipListsLongWith = f: nul: fst: snd:
     genList
       (n: f (elemAt fst n) (if (n < (length snd)) then (elemAt snd n) else nul)) (length fst);
 
   makePAMService = pamService:
     let
-      lines = pamservice: mapAttrs
-                (grp-name: val: map
-		  (acc: "${grp-name} ${acc.control} ${acc.module}"
-                        + optionalString (acc ? args) " ${acc.args}") val)
-		(filterAttrs (n: v: any (p: n == p)
-                                           [ "account" "auth" "session" "password" ])
-                                 pamservice);
+      printControl = ctrl: concatStringsSep " " (mapAttrsToList (n: v: n + "=" + v) ctrl);
+      getMgmtGroups = filterAttrs (n: v: any (p: n == p) [ "account" "auth" "session" "password" ]);
+      hasWhitespace = s: any (c: any (w: w == c) [ " " ]) (stringToCharacters s);
+      quoteArg = arg: if (hasWhitespace arg) then
+                         "[" + (replaceStrings [ "]" ] [ "\\]" ] arg) + "]"
+                      else
+                         arg;
+      printLine = group-name: content:
+        map (mod: "${group-name} [${printControl mod.control}] ${mod.module}"
+                  + optionalString (mod.args != [])
+                     " ${concatStringsSep " " (map quoteArg mod.args)}") content;
+      lines = pamservice: mapAttrs printLine (getMgmtGroups pamservice);
 
       # lines = map (grp: (map (acc: "account ${acc.control} ${acc.module} ")
       #                        grp))
       #             with pamService; [ account auth password session ];
     in
-    { source = pkgs.writeText "${pamService.name}.pam" lines;
-      target = "pam.d/${pamService.name}";
-    };
+      lines pamService;
+    # { #source = pkgs.writeText "${pamService.name}.pam" lines pamService;
+    #   #target = "pam.d/${pamService.name}";
+    #   text = lines pamService;
+    # };
 
 in
 {
@@ -131,21 +143,27 @@ in
         type = with types; addCheck attrs (set: all controlActionCheck (attrValues set));
         description = "Shortcut values for PAM control actions like 'sufficient' or 'required'";
       };
+      text = mkOption {
+        type = types.unspecified;
+      };
     };
   };
 
   config = {
     #evironment.etc = mapAttrsToList (n: v: makePAMService v) cfg.services;
 
-    security.pamdev.providers = {
-      unix = rec {
-        account = lib.singleton {
-          module = "pam_unix.so";
-          control = cfg.controls.sufficient;
+    security.pamdev = {
+      providers = {
+        unix = rec {
+          account = lib.singleton {
+            module = "pam_unix.so";
+            control = cfg.controls.sufficient;
+          };
+          auth = map (v: v // { args = [ "nullok" "likeauth=has whitespace" "try_first_pass" ]; }) account;
+          session = account;
         };
-        auth = map (v: v // { args = [ "nullok" "likeauth" "try_first_pass" ]; }) account;
-        session = account;
       };
+      text = makePAMService;
     };
   };
 }
