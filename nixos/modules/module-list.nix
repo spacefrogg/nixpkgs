@@ -114,6 +114,7 @@
   ./security/hidepid.nix
   ./security/oath.nix
   ./security/pam.nix
+  ./security/pamdev.nix
   ./security/pam_usb.nix
   ./security/pam_mount.nix
   ./security/polkit.nix
