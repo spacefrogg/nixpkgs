@@ -1,9 +1,9 @@
 { config, lib, pkgs, ... }:
 
 let
-  inherit (lib) all any attrValues concatStringsSep mapAttrsToList mkDefault mkOption mkOptionType types
-                genList elemAt filterAttrs length mapAttrs optionalString stringToCharacters;
-  inherit (builtins) isAttrs isInt replaceStrings;
+  inherit (lib) all any attrValues flatten mapAttrsToList mkDefault mkOption mkOptionType types
+                genList elemAt filterAttrs length mapAttrs optionalString stringToCharacters escape;
+  inherit (builtins) isAttrs isInt concatStringsSep;
   parentConfig = config;
 
   # A control action set is an attribute set where all the keys are
@@ -93,34 +93,21 @@ let
 
   cfg = config.security.pamdev;
 
-  zipListsLongWith = f: nul: fst: snd:
-    genList
-      (n: f (elemAt fst n) (if (n < (length snd)) then (elemAt snd n) else nul)) (length fst);
-
   makePAMService = pamService:
     let
-      printControl = ctrl: concatStringsSep " " (mapAttrsToList (n: v: n + "=" + v) ctrl);
       getMgmtGroups = filterAttrs (n: v: any (p: n == p) [ "account" "auth" "session" "password" ]);
-      hasWhitespace = s: any (c: any (w: w == c) [ " " ]) (stringToCharacters s);
-      quoteArg = arg: if (hasWhitespace arg) then
-                         "[" + (replaceStrings [ "]" ] [ "\\]" ] arg) + "]"
-                      else
-                         arg;
+      hasWhitespace = s: any (c: any (w: w == c) [ " " "\n" "\t" ]) (stringToCharacters s);
+      quoteArg = arg: if (hasWhitespace arg) then "[" + (escape [ "]" "\n" ] arg) + "]" else arg;
+      printControl = ctrl: concatStringsSep " " (mapAttrsToList (n: v: n + "=" + v) ctrl);
       printLine = group-name: content:
-        map (mod: "${group-name} [${printControl mod.control}] ${mod.module}"
+        map (mod: group-name + " [" + (printControl mod.control) + "] " + mod.module
                   + optionalString (mod.args != [])
-                     " ${concatStringsSep " " (map quoteArg mod.args)}") content;
-      lines = pamservice: mapAttrs printLine (getMgmtGroups pamservice);
-
-      # lines = map (grp: (map (acc: "account ${acc.control} ${acc.module} ")
-      #                        grp))
-      #             with pamService; [ account auth password session ];
+                     " " + (concatStringsSep " " (map quoteArg mod.args))) content;
+      lines = pamservice: concatStringsSep "\n" (flatten (mapAttrsToList printLine (getMgmtGroups pamservice)));
     in
-      lines pamService;
-    # { #source = pkgs.writeText "${pamService.name}.pam" lines pamService;
-    #   #target = "pam.d/${pamService.name}";
-    #   text = lines pamService;
-    # };
+    { source = pkgs.writeText "${pamService.name}.pam" (lines pamService);
+      target = "pam.d/${pamService.name}";
+    };
 
 in
 {
@@ -135,9 +122,9 @@ in
 
       controls = mkOption {
         default = {
+          optional = { success = "ok"; new_authtok_reqd = "ok"; default = "ignore"; };
           required = { success = "ok"; new_authtok_reqd = "ok"; ignore = "ignore"; default = "bad"; };
           requisite = { success = "ok"; new_authtok_reqd = "ok"; ignore = "ignore"; default = "die"; };
-          optional = { success = "ok"; new_authtok_reqd = "ok"; default = "ignore"; };
           sufficient = { success = "done"; new_authtok_reqd = "done"; default = "ignore"; };
         };
         type = with types; addCheck attrs (set: all controlActionCheck (attrValues set));
@@ -155,11 +142,13 @@ in
     security.pamdev = {
       providers = {
         unix = rec {
-          account = lib.singleton {
-            module = "pam_unix.so";
+          account = [
+          { module = "pam_unix.so";
             control = cfg.controls.sufficient;
-          };
-          auth = map (v: v // { args = [ "nullok" "likeauth=has whitespace" "try_first_pass" ]; }) account;
+          } ];
+          auth = map (v: v // { args = [ "nullok" ''likeauth=has ]whitespace
+foo'' "try_first_pass" ]; }) account;
+          password = account;
           session = account;
         };
       };
