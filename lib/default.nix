@@ -33,6 +33,7 @@ let
   # domain-specific
   sandbox = import ./sandbox.nix;
   fetchers = import ./fetchers.nix;
+  pamfuns = import ./pamfuns.nix;
 
   # Eval-time filesystem handling
   filesystem = import ./filesystem.nix;
@@ -44,7 +45,7 @@ in
             modules options types
             licenses platforms systems
             debug generators misc
-            sandbox fetchers filesystem;
+            sandbox fetchers pamfuns filesystem;
   }
   # !!! don't include everything at top-level; perhaps only the most
   # commonly used functions.

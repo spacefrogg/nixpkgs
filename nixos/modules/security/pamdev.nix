@@ -146,10 +146,9 @@ in
           { module = "pam_unix.so";
             control = cfg.controls.sufficient;
           } ];
-          auth = map (v: v // { args = [ "nullok" ''likeauth=has ]whitespace
-foo'' "try_first_pass" ]; }) account;
-          password = account;
-          session = account;
+          #auth = map (v: v // { args = [ "nullok" ''likeauth=has ]whitespace foo'' "try_first_pass" ]; }) account;
+          #password = account;
+          #session = account;
         };
       };
       text = makePAMService;
