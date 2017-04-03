@@ -2,8 +2,9 @@
 
 let
   inherit (lib) all any attrValues flatten mapAttrsToList mkDefault mkOption mkOptionType types
-                genList elemAt filterAttrs length mapAttrs optionalString stringToCharacters escape;
-  inherit (builtins) isAttrs isInt concatStringsSep;
+                genList elemAt filterAttrs length mapAttrs optionalString stringToCharacters escape optional;
+  inherit (builtins) isAttrs isInt concatStringsSep filter;
+  inherit (lib.pamfuns) mkPAM mkPAMA;
   parentConfig = config;
 
   # A control action set is an attribute set where all the keys are
@@ -20,7 +21,8 @@ let
                       "authtok_lock_busy" "authtok_disable_aging" "try_again"
                       "ignore" "abort" "authtok_expired" "module_unknown"
                       "bad_item" "conv_again" "incomplete" "default" ])
-              && ((any (value: v == value) [ "ignore" "bad" "die" "ok" "done" "reset" ])
+              && ((any (value: v == value)
+                       [ "ignore" "bad" "die" "ok" "done" "reset" ])
                   || ((isInt v) && (v > 0)))))
       set
     == {});
@@ -57,8 +59,14 @@ let
     options = {
       name = mkOption {
         example = "krb5";
-        type = types.str;
-        description = "Name of the PAM service.";
+        type = with types; nullOr str;
+        description = ''
+          Name of the PAM provider if it denotes a PAM service. Set to
+          <literal>null</literal> if this provider is just a partial
+          set of management groups to be used by other PAM service,
+          like `system-auth` or `common-auth' are on other
+          distributions.
+        '';
       };
 
       account = mkOption {
@@ -93,7 +101,7 @@ let
 
   cfg = config.security.pamdev;
 
-  makePAMService = pamService:
+  makePAMService = pamService: if pamService.name != null then
     let
       getMgmtGroups = filterAttrs (n: v: any (p: n == p) [ "account" "auth" "session" "password" ]);
       hasWhitespace = s: any (c: any (w: w == c) [ " " "\n" "\t" ]) (stringToCharacters s);
@@ -106,18 +114,29 @@ let
       lines = pamservice: concatStringsSep "\n" (flatten (mapAttrsToList printLine (getMgmtGroups pamservice)));
     in
     { source = pkgs.writeText "${pamService.name}.pam" (lines pamService);
-      target = "pam.d/${pamService.name}";
-    };
+      target = "pamdev.d/${pamService.name}";
+    }
+  else null;
 
 in
 {
   options = {
     security.pamdev = {
 
+      rootOK = mkOption {
+        type = types.bool;
+	default = true;
+      };
+
+      requireWheel = mkOption {
+        type = types.bool;
+	default = true;
+      };
+
       providers = mkOption {
         default = [];
         description = "List of PAM service providers";
-        type = with types; loaOf (submodule provider);
+        type = with types; attrsOf (submodule provider);
       };
 
       controls = mkOption {
@@ -137,11 +156,31 @@ in
   };
 
   config = {
-    #evironment.etc = mapAttrsToList (n: v: makePAMService v) cfg.services;
+    environment.etc = filter (e: e != null) (mapAttrsToList (n: v: makePAMService v) cfg.providers);
 
-    security.pamdev = {
+    security.pamdev = with cfg.controls; {
       providers = {
+        other = rec {
+	  account = [
+	  { module = "pam_warn.so";
+	    control = required;
+	  } {
+	    module = "pam_deny.so";
+	    control = required;
+	  } ];
+	  auth = account;
+	  password = account; 
+	  session = account;
+	};
+	common-service = {
+  	  name = null;
+	  account = [ (mkPAM "pam_unix.so" required) ];
+	  auth = (optional cfg.rootOK (mkPAM "pam_rootok.so" sufficient)) ++
+                 (optional cfg.requireWheel (mkPAMA "pam_wheels.o" sufficient [ "use_uid" ]));
+	};
+
         unix = rec {
+	  name = null;
           account = [
           { module = "pam_unix.so";
             control = cfg.controls.sufficient;

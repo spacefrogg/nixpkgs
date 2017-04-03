@@ -40,4 +40,7 @@ rec {
        session = [ { module = "pam_permit.so"; control = required; } ]; }
   */
   mergePAMProviders = pvs: foldAttrs (n: a: n ++ a) [] (map getMgmtGroups pvs);
+
+  mkPAM = module: control: { inherit module control; };
+  mkPAMA = module: control: args: { inherit module control args; };
 }
