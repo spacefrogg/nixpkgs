@@ -3705,6 +3705,8 @@ with pkgs;
 
   pdf2svg = callPackage ../tools/graphics/pdf2svg { };
 
+  pdfchain = callPackage ../applications/misc/pdfchain { };
+
   pdfmod = callPackage ../applications/misc/pdfmod { };
 
   jbig2enc = callPackage ../tools/graphics/jbig2enc { };
