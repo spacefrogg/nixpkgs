@@ -4,19 +4,22 @@ with python3Packages;
 
 buildPythonApplication rec {
   pname = "pynitrokey";
-  version = "0.4.27";
+  version = "0.4.33";
   format = "flit";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "sha256-aWQhMvATcDtyBtj38mGnypkKIqKQgneBzWDh5o/5Wkc=";
+    sha256 = "sha256-NL6eXtK3XGXuayC2qnUMkcAhksWW/NwYV5S1AvSxrRc=";
   };
+
+  patches = [ ./deps.diff ];
 
   propagatedBuildInputs = [
     click
     cryptography
     ecdsa
     fido2
+    frozendict
     intelhex
     nrfutil
     pyserial
@@ -25,6 +28,7 @@ buildPythonApplication rec {
     pygments
     python-dateutil
     spsdk
+    tlv8
     urllib3
     cffi
     cbor
