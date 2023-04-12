@@ -306,7 +306,7 @@ in {
         ];
         preStart = ''
           mkdir -m 0755 -p /var/openafs
-          ${optionalString (netInfo != null) "cp ${netInfo} /var/openafs/netInfo"}
+          ${optionalString (netInfo != null) "cp ${netInfo} /var/openafs/NetInfo"}
           ${optionalString useBuCellServDB "cp ${buCellServDB}"}
         '';
         serviceConfig = {
